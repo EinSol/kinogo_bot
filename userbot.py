@@ -2,6 +2,7 @@ from database.tools import store_film, if_film_in_db
 from pyrogram import Client, filters
 from backend.download_files import get_file
 from decouple import config
+from handlers_component.phrases import error_text
 import logging
 import json
 import os
@@ -33,6 +34,7 @@ def download_film(client, message):
     in_db = True
     path_to_film = if_film_in_db(data['title'], data['quality'])
 
+    print('get message from bot')
     if path_to_film is None:
         in_db = False
         path_to_film = get_file(data['title'], data['url'])
@@ -52,6 +54,8 @@ def download_film(client, message):
 
         except Exception as e:
             print(e)
+            app.send_message(chat_id=cid,
+                             text=error_text.format(data["user_id"]))
 
         if not in_db:
             os.remove(path_to_film[i])

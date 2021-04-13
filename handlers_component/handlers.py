@@ -1,12 +1,14 @@
 from telegram.ext import (CommandHandler, MessageHandler, Filters, CallbackContext,
                           CallbackQueryHandler, ConversationHandler)
-from telegram import (ParseMode, InlineKeyboardButton, InlineKeyboardMarkup, Update)
+from telegram import (ParseMode, Update)
 from backend.parser import parse_data, parse_film_page
 from database.tools import store_user
-from phrases import info_form, wait_text, no_results_text
+from chattools import clean_chat
+from handlers_component.keyboards import main_kb_state, current_film_kb, get_quality_kb
+from handlers_component.phrases import (info_form, wait_text, no_results_text, searching_text,
+                                        quality_text, send_error_text)
 from decouple import config
 import json
-
 
 ID = config('ID')
 HASH = config('HASH')
@@ -14,6 +16,7 @@ PHONE = config('PHONE')
 USERBOT_ID = int(config('USERBOT_ID'))
 
 SEARCH, MAIN_MENU, DOWNLOAD = range(3)
+
 
 def start_callback(update: Update, context: CallbackContext):
     update.message.reply_text(text='Welcome to the FilmBot!')
@@ -31,9 +34,10 @@ start_handler = CommandHandler(command='start',
 def query_callback(update: Update, context: CallbackContext):
     cid = update.effective_message.chat.id
     q = update.message.text
-    store_user(update)
+    clean_chat(update, context)
+
     message_id = context.bot.send_message(chat_id=cid,
-                                          text='Searching film...').message_id
+                                          text=searching_text).message_id
     results = parse_data(q)
 
     if len(results) == 0:
@@ -47,23 +51,8 @@ def query_callback(update: Update, context: CallbackContext):
 
     context.chat_data.update({'results': results})
 
-    download_button = InlineKeyboardButton(text='download',
-                                           callback_data='choose_film_quality:0')
-    next_button = InlineKeyboardButton(text='next',
-                                       callback_data='film:1')
-
-    info_button = InlineKeyboardButton(text='info',
-                                       callback_data='info:0')
-    all_button = InlineKeyboardButton(text='show all',
-                                      callback_data='all:0')
-
-    if len(results) > 1:
-
-        keyboard = InlineKeyboardMarkup([[download_button],
-                                         [next_button],
-                                         [all_button, info_button]])
-    else:
-        keyboard = InlineKeyboardMarkup([[download_button, info_button]])
+    current_film = 0
+    keyboard = main_kb_state(current_film, len(results))
 
     context.bot.edit_message_text(chat_id=cid,
                                   message_id=message_id,
@@ -81,7 +70,6 @@ query_handler = MessageHandler(callback=query_callback,
 
 
 def switch_film_callback(update: Update, context: CallbackContext):
-
     cid = update.effective_message.chat.id
     mid = update.callback_query.message.message_id
 
@@ -93,31 +81,7 @@ def switch_film_callback(update: Update, context: CallbackContext):
     current_film = int(update.callback_query.data.split(':')[-1])
     results = context.chat_data['results']
 
-    download_button = InlineKeyboardButton(text='download',
-                                           callback_data=f'choose_film_quality:{current_film}')
-    next_button = InlineKeyboardButton(text='next',
-                                       callback_data=f'film:{current_film + 1}')
-    previous_button = InlineKeyboardButton(text='previous',
-                                           callback_data=f'film:{current_film - 1}')
-    all_button = InlineKeyboardButton(text='show all',
-                                      callback_data=f'all:{current_film}')
-    info_button = InlineKeyboardButton(text='info',
-                                       callback_data=f'info:{current_film}')
-
-    if len(results) - 1 == current_film:
-        keyboard = InlineKeyboardMarkup([[download_button],
-                                         [previous_button],
-                                         [all_button, info_button]])
-
-    elif current_film == 0:
-        keyboard = InlineKeyboardMarkup([[download_button],
-                                         [next_button],
-                                         [all_button, info_button]])
-
-    else:
-        keyboard = InlineKeyboardMarkup([[download_button],
-                                         [previous_button, next_button],
-                                         [all_button, info_button]])
+    keyboard = main_kb_state(current_film, len(results))
 
     context.bot.edit_message_text(chat_id=cid,
                                   message_id=mid,
@@ -140,12 +104,7 @@ def show_info_about_film_callback(update: Update, context: CallbackContext):
 
     results = context.chat_data['results']
 
-    download_button = InlineKeyboardButton(text='download',
-                                           callback_data=f'choose_film_quality:{current_film}')
-    back_to_slider_button = InlineKeyboardButton(text='back',
-                                                 callback_data=f'film:{current_film}')
-
-    keyboard = InlineKeyboardMarkup([[back_to_slider_button, download_button]])
+    keyboard = current_film_kb(current_film, len(results), 'about')
 
     context.bot.edit_message_text(chat_id=cid,
                                   message_id=mid,
@@ -163,10 +122,9 @@ show_info_about_film_handler = CallbackQueryHandler(callback=show_info_about_fil
 
 
 def show_all_films_callback(update: Update, context: CallbackContext):
-
     cid = update.effective_message.chat.id
     mid = update.callback_query.message.message_id
-
+    current_film = int(update.callback_query.data.split(':')[-1])
     results = context.chat_data['results']
 
     output_message = ''
@@ -174,8 +132,7 @@ def show_all_films_callback(update: Update, context: CallbackContext):
     for film in results:
         output_message += film['title'] + '\n'
 
-    back_to_slider_button = InlineKeyboardButton(text='back', callback_data='film:0')
-    keyboard = InlineKeyboardMarkup([[back_to_slider_button]])
+    keyboard = current_film_kb(current_film, len(results), 'all')
 
     context.bot.edit_message_text(chat_id=cid,
                                   message_id=mid,
@@ -190,7 +147,6 @@ show_all_films_handler = CallbackQueryHandler(callback=show_all_films_callback,
 
 
 def choose_film_quality_handler(update: Update, context: CallbackContext):
-
     cid = update.effective_message.chat.id
     mid = update.callback_query.message.message_id
 
@@ -203,18 +159,11 @@ def choose_film_quality_handler(update: Update, context: CallbackContext):
 
     context.chat_data.update({'download_urls': download_urls_list})
 
-    back_to_slider_button = InlineKeyboardButton(text='back', callback_data=f'film:{current_film}')
-
-    button_list = []
-
-    for url in download_urls_list:
-        button_list.append(InlineKeyboardButton(text=url['quality'], callback_data=f'download:{url["quality"]}'))
-
-    keyboard = InlineKeyboardMarkup([button_list, [back_to_slider_button]])
+    keyboard = get_quality_kb(current_film, download_urls_list)
 
     context.bot.edit_message_text(chat_id=cid,
                                   message_id=mid,
-                                  text='<b>Choose film quality</b>',
+                                  text=quality_text,
                                   reply_markup=keyboard,
                                   parse_mode=ParseMode.HTML)
 
@@ -233,10 +182,10 @@ def download_callback(update: Update, context: CallbackContext):
 
     quality = update.callback_query.data.split(':')[-1]
 
-
     download_url = list(filter(lambda film: film['quality'] == quality, download_urls_list))[0]
     download_url.update({'user_id': cid})
 
+    print('Send message to userbot')
     context.bot.send_message(chat_id=USERBOT_ID, text=json.dumps(download_url))
 
     context.bot.edit_message_text(chat_id=cid,
@@ -255,6 +204,21 @@ download_handler = CallbackQueryHandler(callback=download_callback,
 
 def userbot_message_callback(update: Update, context: CallbackContext):
     print('Bot got message from userbot')
+
+    try:
+        if update.effective_message.text.find('Error'):
+            uid = update.effective_message.text.split(':')[1]
+            context.bot.send_message(chat_id=int(uid),
+                                     text=send_error_text)
+            return
+
+    except Exception as e:
+        uid = update.effective_message.text.split(':')[1]
+        context.bot.send_message(chat_id=int(uid),
+                                 text=send_error_text)
+        return
+
+    print(update.effective_message.caption)
     data = update.effective_message.caption.split('_')
     fid = update.effective_message.video.file_id
     uid = data[0]
@@ -280,5 +244,3 @@ def exit_callback(update: Update, context: CallbackContext):
 
 exit_handler = CallbackQueryHandler(callback=exit_callback,
                                     pattern='exit')
-
-

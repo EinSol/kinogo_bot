@@ -1,5 +1,5 @@
 from telegram import Update
-from dbmodels import User, Film, db
+from database.dbmodels import User, Film, db
 
 
 def store_user(update: Update):
