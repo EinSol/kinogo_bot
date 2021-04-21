@@ -1,8 +1,8 @@
+from handlers_component.phrases import error_text
 from database.tools import store_film, if_film_in_db
 from pyrogram import Client, filters
-from backend.download_files import get_file
+from backend.download_files import download_file
 from decouple import config
-from handlers_component.phrases import error_text
 import logging
 import json
 import os
@@ -37,11 +37,12 @@ def download_film(client, message):
     print('get message from bot')
     if path_to_film is None:
         in_db = False
-        path_to_film = get_file(data['title'], data['url'])
+        path_to_film = download_file(data['title'], data['url'])
 
     file_id_list = []
     for i in range(len(path_to_film)):
         print('Send video to bot')
+        print()
         try:
             caption = f'{data["user_id"]}_{data["title"]}_{data["quality"]}'
             file_id_list.append(app.send_video(chat_id=cid,

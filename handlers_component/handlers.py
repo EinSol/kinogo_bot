@@ -206,30 +206,22 @@ def userbot_message_callback(update: Update, context: CallbackContext):
     print('Bot got message from userbot')
 
     try:
-        if update.effective_message.text.find('Error'):
-            uid = update.effective_message.text.split(':')[1]
-            context.bot.send_message(chat_id=int(uid),
-                                     text=send_error_text)
-            return
+        data = update.effective_message.caption.split('_')
+        fid = update.effective_message.video.file_id
+        uid = data[0]
+        title = data[1]
 
+        context.bot.send_video(chat_id=uid,
+                               caption=title,
+                               video=fid,
+                               width=1920,
+                               height=1080,
+                               supports_streaming=True)
     except Exception as e:
-        uid = update.effective_message.text.split(':')[1]
-        context.bot.send_message(chat_id=int(uid),
-                                 text=send_error_text)
+        text, uid = update.effective_message.text.split(' ')
+        context.bot.send_message(chat_id=uid,
+                                 text=text)
         return
-
-    print(update.effective_message.caption)
-    data = update.effective_message.caption.split('_')
-    fid = update.effective_message.video.file_id
-    uid = data[0]
-    title = data[1]
-
-    context.bot.send_video(chat_id=uid,
-                           caption=title,
-                           video=fid,
-                           width=1920,
-                           height=1080,
-                           supports_streaming=True)
     print('Send video to user')
 
 
